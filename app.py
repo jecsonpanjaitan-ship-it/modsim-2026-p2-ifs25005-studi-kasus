@@ -10,6 +10,16 @@ st.title("📊 Analisis Data Kuesioner")
 # ===============================
 try:
     df = pd.read_excel("data_kuesioner.xlsx")
+except ImportError:
+    st.error("Library openpyxl belum terinstall")
+    st.stop()
+except Exception as e:
+    st.error(e)
+    st.stop()
+
+
+try:
+    df = pd.read_excel("data_kuesioner.xlsx")
 except Exception as e:
     st.error(f"Gagal memuat data: {e}")
     st.stop()
