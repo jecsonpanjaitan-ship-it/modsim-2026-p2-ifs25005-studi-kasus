@@ -1,136 +1,164 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-st.set_page_config(page_title="Analisis Kuesioner", layout="wide")
+# =====================
+# PAGE CONFIG
+# =====================
+st.set_page_config(
+    page_title="Dashboard Kuesioner",
+    layout="wide"
+)
 
-st.title("📊 Analisis Data Kuesioner")
-
-# ===============================
-# Load data
-# ===============================
-try:
-    df = pd.read_excel("data_kuesioner.xlsx")
-except ImportError:
-    st.error("Library openpyxl belum terinstall")
-    st.stop()
-except Exception as e:
-    st.error(e)
-    st.stop()
-
-
-try:
-    df = pd.read_excel("data_kuesioner.xlsx")
-except Exception as e:
-    st.error(f"Gagal memuat data: {e}")
-    st.stop()
+# =====================
+# LOAD DATA (SINKRON answer.py)
+# =====================
+df = pd.read_excel("data_kuesioner.xlsx")
 
 questions = [f"Q{i}" for i in range(1, 18)]
 data = df[questions]
 
-N = len(df)
-TOTAL = data.size
-
 skala_order = ["SS", "S", "CS", "CTS", "TS", "STS"]
+skor = {"SS":6, "S":5, "CS":4, "CTS":3, "TS":2, "STS":1}
 
-def pct(j, t):
-    return f"{(j / t * 100):.1f}%"
-
-# ===============================
-# Pilih pertanyaan
-# ===============================
-target = st.selectbox(
-    "Pilih Analisis",
-    [f"q{i}" for i in range(1, 14)]
+# =====================
+# SIDEBAR
+# =====================
+st.sidebar.markdown("## 📊 ANALISIS KUESIONER")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Filter Pertanyaan")
+st.sidebar.multiselect(
+    "Pilih pertanyaan",
+    questions,
+    default=questions
 )
 
-st.divider()
+# =====================
+# HEADER
+# =====================
+st.markdown(
+    """
+    <h2>📈 Dashboard Analisis Kuesioner</h2>
+    <p style='color:gray;'>Sinkron 1–1 dengan answer.py</p>
+    """,
+    unsafe_allow_html=True
+)
 
-# ===============================
-# Proses sesuai pilihan
-# ===============================
-if target == "q1":
-    vc = data.stack().value_counts().reindex(skala_order, fill_value=0)
-    mx = vc.max()
-    skala = [s for s in skala_order if vc[s] == mx][0]
-    st.success(f"{skala} | {mx} | {pct(mx, TOTAL)}")
+# =====================
+# Q1 – BAR DISTRIBUSI TOTAL
+# =====================
+st.subheader("📊 Distribusi Jawaban Keseluruhan")
 
-elif target == "q2":
-    vc = data.stack().value_counts().reindex(skala_order, fill_value=0)
-    mn = vc.min()
-    skala = [s for s in skala_order if vc[s] == mn][0]
-    st.success(f"{skala} | {mn} | {pct(mn, TOTAL)}")
+vc = (
+    data.stack()
+    .value_counts()
+    .reindex(skala_order, fill_value=0)
+    .reset_index()
+)
+vc.columns = ["Jawaban", "Jumlah"]
 
-elif target == "q3":
-    cnt = {q: (data[q] == "SS").sum() for q in questions}
-    mx = max(cnt.values())
-    q = min(q for q in questions if cnt[q] == mx)
-    st.success(f"{q} | {mx} | {pct(mx, N)}")
+fig_bar = px.bar(
+    vc,
+    x="Jawaban",
+    y="Jumlah",
+    text="Jumlah"
+)
+st.plotly_chart(fig_bar, use_container_width=True)
 
-elif target == "q4":
-    cnt = {q: (data[q] == "S").sum() for q in questions}
-    mx = max(cnt.values())
-    q = min(q for q in questions if cnt[q] == mx)
-    st.success(f"{q} | {mx} | {pct(mx, N)}")
+# =====================
+# PIE CHART
+# =====================
+st.subheader("🥧 Proporsi Jawaban")
 
-elif target == "q5":
-    cnt = {q: (data[q] == "CS").sum() for q in questions}
-    mx = max(cnt.values())
-    q = min(q for q in questions if cnt[q] == mx)
-    st.success(f"{q} | {mx} | {pct(mx, N)}")
+fig_pie = px.pie(
+    vc,
+    names="Jawaban",
+    values="Jumlah"
+)
+st.plotly_chart(fig_pie, use_container_width=True)
 
-elif target == "q6":
-    cnt = {q: (data[q] == "CTS").sum() for q in questions}
-    mx = max(cnt.values())
-    q = min(q for q in questions if cnt[q] == mx)
-    st.success(f"{q} | {mx} | {pct(mx, N)}")
+# =====================
+# STACKED BAR PER PERTANYAAN
+# =====================
+st.subheader("📚 Distribusi Jawaban per Pertanyaan")
 
-elif target == "q7":
-    cnt = {q: (data[q] == "TS").sum() for q in questions}
-    mx = max(cnt.values())
-    q = min(q for q in questions if cnt[q] == mx)
-    st.success(f"{q} | {mx} | {pct(mx, N)}")
+stacked = (
+    data.apply(lambda x: x.value_counts())
+    .T
+    .reindex(columns=skala_order, fill_value=0)
+    .reset_index()
+)
 
-elif target == "q8":
-    cnt = {q: (data[q] == "STS").sum() for q in questions}
-    mx = max(cnt.values())
-    q = min(q for q in questions if cnt[q] == mx)
-    st.success(f"{q} | {mx} | {pct(mx, N)}")
+fig_stack = px.bar(
+    stacked,
+    x="index",
+    y=skala_order,
+    barmode="stack",
+    labels={"index": "Pertanyaan"}
+)
+st.plotly_chart(fig_stack, use_container_width=True)
 
-elif target == "q9":
-    out = []
-    for q in questions:
-        j = (data[q] == "STS").sum()
-        if j > 0:
-            out.append(f"{q}: {pct(j, N)}")
-    st.info(" | ".join(out) if out else "Tidak ada nilai STS")
+# =====================
+# RATA-RATA SKOR PER PERTANYAAN
+# =====================
+st.subheader("⭐ Rata-rata Skor per Pertanyaan")
 
-elif target == "q10":
-    skor = {"SS":6, "S":5, "CS":4, "CTS":3, "TS":2, "STS":1}
-    mean_all = data.replace(skor).stack().mean()
-    st.success(f"Rata-rata keseluruhan: {mean_all:.2f}")
+mean_q = data.replace(skor).mean().reset_index()
+mean_q.columns = ["Pertanyaan", "Rata-rata Skor"]
 
-elif target == "q11":
-    skor = {"SS":6, "S":5, "CS":4, "CTS":3, "TS":2, "STS":1}
-    mean = {q: data[q].replace(skor).mean() for q in questions}
-    mx = max(mean.values())
-    q = min(q for q in questions if mean[q] == mx)
-    st.success(f"{q} : {mx:.2f}")
+fig_mean = px.bar(
+    mean_q,
+    x="Pertanyaan",
+    y="Rata-rata Skor",
+    text="Rata-rata Skor"
+)
+st.plotly_chart(fig_mean, use_container_width=True)
 
-elif target == "q12":
-    skor = {"SS":6, "S":5, "CS":4, "CTS":3, "TS":2, "STS":1}
-    mean = {q: data[q].replace(skor).mean() for q in questions}
-    mn = min(mean.values())
-    q = min(q for q in questions if mean[q] == mn)
-    st.success(f"{q} : {mn:.2f}")
+# =====================
+# POSITIF / NETRAL / NEGATIF (Q13)
+# =====================
+st.subheader("😊 Distribusi Jawaban Positif, Netral, Negatif")
 
-elif target == "q13":
-    pos = data.isin(["SS", "S"]).sum().sum()
-    neu = data.isin(["CS"]).sum().sum()
-    neg = data.isin(["CTS", "TS", "STS"]).sum().sum()
-    tot = pos + neu + neg
+pos = data.isin(["SS", "S"]).sum().sum()
+neu = data.isin(["CS"]).sum().sum()
+neg = data.isin(["CTS", "TS", "STS"]).sum().sum()
 
-    st.write(
-        f"**Positif** = {pos} ({pct(pos, tot)})  \n"
-        f"**Netral** = {neu} ({pct(neu, tot)})  \n"
-        f"**Negatif** = {neg} ({pct(neg, tot)})"
+kat_df = pd.DataFrame({
+    "Kategori": ["Positif", "Netral", "Negatif"],
+    "Jumlah": [pos, neu, neg]
+})
+
+fig_kat = px.bar(
+    kat_df,
+    x="Kategori",
+    y="Jumlah",
+    text="Jumlah"
+)
+st.plotly_chart(fig_kat, use_container_width=True)
+
+# =====================
+# BONUS – RADAR CHART (FIXED & STABLE)
+# =====================
+st.subheader("Radar Chart Profil Kepuasan")
+
+# pastikan tidak ada NaN
+radar_df = mean_q.dropna()
+
+fig_radar = px.line_polar(
+    radar_df,
+    r="Rata-rata Skor",
+    theta="Pertanyaan",
+    line_close=True
+)
+
+fig_radar.update_traces(fill="toself")
+fig_radar.update_layout(
+    polar=dict(
+        radialaxis=dict(
+            visible=True,
+            range=[1, 6]
+        )
     )
+)
+
+st.plotly_chart(fig_radar, use_container_width=True)
