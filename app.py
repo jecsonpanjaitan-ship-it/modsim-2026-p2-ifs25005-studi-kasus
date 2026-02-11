@@ -13,7 +13,7 @@ st.set_page_config(
 # =====================
 # LOAD DATA (SINKRON answer.py)
 # =====================
-df = pd.read_excel("data_kuesioner.xlsx")
+df = pd.read_excel("data_kuesioner.xlsx", engine="openpyxl")
 
 questions = [f"Q{i}" for i in range(1, 18)]
 data = df[questions]
