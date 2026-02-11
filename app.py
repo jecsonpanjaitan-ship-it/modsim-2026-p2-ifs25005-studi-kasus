@@ -1,166 +1,96 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
-# =====================
-# PAGE CONFIG
-# =====================
-st.set_page_config(
-    page_title="Dashboard Kuesioner",
-    layout="wide"
-)
+st.set_page_config(page_title="Dashboard Kuesioner", layout="wide")
 
-# =====================
-# LOAD DATA (SINKRON answer.py)
-# =====================
+st.title("📊 Dashboard Kuesioner Kepuasan")
 
-df = pd.read_excel("data_kuesioner.xlsx")
+# =========================
+# LOAD DATA DENGAN AMAN
+# =========================
 
+@st.cache_data
+def load_data():
+    return pd.read_excel("data_kuesioner.xlsx")
 
-questions = [f"Q{i}" for i in range(1, 18)]
-data = df[questions]
+if not os.path.exists("data_kuesioner.xlsx"):
+    st.error("File data_kuesioner.xlsx tidak ditemukan di folder project.")
+    st.stop()
 
-skala_order = ["SS", "S", "CS", "CTS", "TS", "STS"]
-skor = {"SS":6, "S":5, "CS":4, "CTS":3, "TS":2, "STS":1}
+try:
+    df = load_data()
+except Exception as e:
+    st.error("Terjadi kesalahan saat membaca file Excel.")
+    st.write(e)
+    st.stop()
 
-# =====================
-# SIDEBAR
-# =====================
-st.sidebar.markdown("## 📊 ANALISIS KUESIONER")
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Filter Pertanyaan")
-st.sidebar.multiselect(
+# =========================
+# SIDEBAR FILTER
+# =========================
+
+st.sidebar.header("Filter Data")
+
+questions = [col for col in df.columns if col.startswith("Q")]
+
+selected_questions = st.sidebar.multiselect(
     "Pilih pertanyaan",
     questions,
     default=questions
 )
 
-# =====================
-# HEADER
-# =====================
-st.markdown(
-    """
-    <h2>📈 Dashboard Analisis Kuesioner</h2>
-    <p style='color:gray;'>Sinkron 1–1 dengan answer.py</p>
-    """,
-    unsafe_allow_html=True
-)
+if not selected_questions:
+    st.warning("Pilih minimal satu pertanyaan.")
+    st.stop()
 
-# =====================
-# Q1 – BAR DISTRIBUSI TOTAL
-# =====================
-st.subheader("📊 Distribusi Jawaban Keseluruhan")
+data = df[selected_questions]
 
-vc = (
-    data.stack()
-    .value_counts()
-    .reindex(skala_order, fill_value=0)
-    .reset_index()
-)
-vc.columns = ["Jawaban", "Jumlah"]
+mapping = {
+    "SS": 5,
+    "S": 4,
+    "CS": 3,
+    "TS": 2,
+    "STS": 1
+}
 
-fig_bar = px.bar(
-    vc,
-    x="Jawaban",
-    y="Jumlah",
-    text="Jumlah"
-)
-st.plotly_chart(fig_bar, use_container_width=True)
+data = data.replace(mapping)
 
-# =====================
-# PIE CHART
-# =====================
-st.subheader("🥧 Proporsi Jawaban")
+# Tambahan ini supaya tidak error
+data = data.apply(pd.to_numeric, errors='coerce')
 
-fig_pie = px.pie(
-    vc,
-    names="Jawaban",
-    values="Jumlah"
-)
-st.plotly_chart(fig_pie, use_container_width=True)
+mean_values = data.mean().reset_index()
 
-# =====================
-# STACKED BAR PER PERTANYAAN
-# =====================
-st.subheader("📚 Distribusi Jawaban per Pertanyaan")
 
-stacked = (
-    data.apply(lambda x: x.value_counts())
-    .T
-    .reindex(columns=skala_order, fill_value=0)
-    .reset_index()
-)
+# =========================
+# HITUNG RATA-RATA
+# =========================
 
-fig_stack = px.bar(
-    stacked,
-    x="index",
-    y=skala_order,
-    barmode="stack",
-    labels={"index": "Pertanyaan"}
-)
-st.plotly_chart(fig_stack, use_container_width=True)
+mean_values = data.mean().reset_index()
+mean_values.columns = ["Pertanyaan", "Rata-rata"]
 
-# =====================
-# RATA-RATA SKOR PER PERTANYAAN
-# =====================
-st.subheader("⭐ Rata-rata Skor per Pertanyaan")
+# =========================
+# VISUALISASI
+# =========================
 
-mean_q = data.replace(skor).mean().reset_index()
-mean_q.columns = ["Pertanyaan", "Rata-rata Skor"]
-
-fig_mean = px.bar(
-    mean_q,
+fig = px.bar(
+    mean_values,
     x="Pertanyaan",
-    y="Rata-rata Skor",
-    text="Rata-rata Skor"
-)
-st.plotly_chart(fig_mean, use_container_width=True)
-
-# =====================
-# POSITIF / NETRAL / NEGATIF (Q13)
-# =====================
-st.subheader("😊 Distribusi Jawaban Positif, Netral, Negatif")
-
-pos = data.isin(["SS", "S"]).sum().sum()
-neu = data.isin(["CS"]).sum().sum()
-neg = data.isin(["CTS", "TS", "STS"]).sum().sum()
-
-kat_df = pd.DataFrame({
-    "Kategori": ["Positif", "Netral", "Negatif"],
-    "Jumlah": [pos, neu, neg]
-})
-
-fig_kat = px.bar(
-    kat_df,
-    x="Kategori",
-    y="Jumlah",
-    text="Jumlah"
-)
-st.plotly_chart(fig_kat, use_container_width=True)
-
-# =====================
-# BONUS – RADAR CHART (FIXED & STABLE)
-# =====================
-st.subheader("Radar Chart Profil Kepuasan")
-
-# pastikan tidak ada NaN
-radar_df = mean_q.dropna()
-
-fig_radar = px.line_polar(
-    radar_df,
-    r="Rata-rata Skor",
-    theta="Pertanyaan",
-    line_close=True
+    y="Rata-rata",
+    title="Rata-rata Nilai per Pertanyaan",
+    text_auto=True
 )
 
-fig_radar.update_traces(fill="toself")
-fig_radar.update_layout(
-    polar=dict(
-        radialaxis=dict(
-            visible=True,
-            range=[1, 6]
-        )
-    )
+fig.update_layout(
+    xaxis_title="Pertanyaan",
+    yaxis_title="Rata-rata Skor",
 )
 
-st.plotly_chart(fig_radar, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
+
+# =========================
+# TAMPILKAN DATA MENTAH
+# =========================
+
+st.subheader("Data Mentah")
+st.dataframe(df)
