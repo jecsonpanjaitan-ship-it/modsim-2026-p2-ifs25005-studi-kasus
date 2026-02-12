@@ -2,166 +2,298 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from answer import create_analyzer, KuesionerAnalyzer, Visualizer
 
-# Judul Dashboard
-st.set_page_config(page_title="Dashboard Kuesioner", layout="wide")
-st.title("📊 Dashboard Visualisasi Kuesioner")
+# Set page configuration
+st.set_page_config(
+    page_title="Dashboard Kuesioner",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Mapping skala ke skor dan kategori
-scale_to_score = {
-    "SS": 6,
-    "S": 5,
-    "CS": 4,
-    "CTS": 3,
-    "TS": 2,
-    "STS": 1
-}
-
-scale_to_category = {
-    "SS": "Positif",
-    "S": "Positif",
-    "CS": "Netral",
-    "CTS": "Negatif",
-    "TS": "Negatif",
-    "STS": "Negatif"
-}
-
-# Load data
-@st.cache_data
-def load_data():
-    df = pd.read_excel("data_kuesioner.xlsx")
-    return df
-
-try:
-    df_raw = load_data()
-except FileNotFoundError:
-    st.error("File 'data_kuesioner.xlsx' tidak ditemukan. Pastikan file berada di folder yang sama.")
-    st.stop()
-
-# Validasi: pastikan semua nilai valid
-valid_scales = set(scale_to_score.keys())
-all_values = df_raw.values.flatten()
-if not set(all_values).issubset(valid_scales):
-    invalid = set(all_values) - valid_scales
-    st.warning(f"Nilai tidak valid ditemukan: {invalid}. Harap perbaiki data.")
-    st.stop()
-
-# Ubah ke skor numerik dan kategori
-df_score = df_raw.replace(scale_to_score)
-df_category = df_raw.replace(scale_to_category)
-
-# Gabung semua jawaban menjadi satu series untuk analisis keseluruhan
-all_answers = df_raw.melt(value_name="Jawaban")["Jawaban"]
-all_categories = all_answers.map(scale_to_category)
-
-# === 1. Bar Chart: Distribusi Jawaban Keseluruhan ===
-st.subheader("1. Distribusi Jawaban Keseluruhan (Frekuensi)")
-answer_counts = all_answers.value_counts().reindex(["SS", "S", "CS", "CTS", "TS", "STS"], fill_value=0)
-fig1 = px.bar(
-    x=answer_counts.index,
-    y=answer_counts.values,
-    labels={"x": "Skala", "y": "Frekuensi"},
-    color=answer_counts.index,
-    color_discrete_map={
-        "SS": "#1f77b4",
-        "S": "#6baed6",
-        "CS": "#d9d9d9",
-        "CTS": "#fd8d3c",
-        "TS": "#f16913",
-        "STS": "#d94801"
+# Custom CSS
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
     }
-)
-st.plotly_chart(fig1, use_container_width=True)
-
-# === 2. Pie Chart: Proporsi Jawaban Keseluruhan ===
-st.subheader("2. Proporsi Jawaban Keseluruhan")
-fig2 = px.pie(
-    names=answer_counts.index,
-    values=answer_counts.values,
-    color=answer_counts.index,
-    color_discrete_map={
-        "SS": "#1f77b4",
-        "S": "#6baed6",
-        "CS": "#d9d9d9",
-        "CTS": "#fd8d3c",
-        "TS": "#f16913",
-        "STS": "#d94801"
+    .metric-card {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
     }
-)
-st.plotly_chart(fig2, use_container_width=True)
-
-# === 3. Stacked Bar: Distribusi Jawaban per Pertanyaan ===
-st.subheader("3. Distribusi Jawaban per Pertanyaan")
-question_dist = df_raw.apply(lambda col: col.value_counts()).fillna(0)
-question_dist = question_dist.reindex(["SS", "S", "CS", "CTS", "TS", "STS"], fill_value=0)
-question_dist = question_dist.T  # Transpose agar pertanyaan jadi index
-
-fig3 = px.bar(
-    question_dist,
-    x=question_dist.index,
-    y=["SS", "S", "CS", "CTS", "TS", "STS"],
-    labels={"value": "Frekuensi", "x": "Pertanyaan"},
-    color_discrete_map={
-        "SS": "#1f77b4",
-        "S": "#6baed6",
-        "CS": "#d9d9d9",
-        "CTS": "#fd8d3c",
-        "TS": "#f16913",
-        "STS": "#d94801"
+    .positive {
+        color: #2ecc71;
+        font-weight: bold;
     }
-)
-fig3.update_layout(barmode='stack')
-st.plotly_chart(fig3, use_container_width=True)
+    .neutral {
+        color: #f39c12;
+        font-weight: bold;
+    }
+    .negative {
+        color: #e74c3c;
+        font-weight: bold;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# === 4. Bar Chart: Rata-rata Skor per Pertanyaan ===
-st.subheader("4. Rata-rata Skor per Pertanyaan")
-mean_scores = df_score.mean()
-fig4 = px.bar(
-    x=mean_scores.index,
-    y=mean_scores.values,
-    labels={"x": "Pertanyaan", "y": "Rata-rata Skor"},
-    color=mean_scores.values,
-    color_continuous_scale="Blues"
-)
-fig4.update_layout(coloraxis_showscale=False)
-st.plotly_chart(fig4, use_container_width=True)
+# Title
+st.markdown('<p class="main-header">📊 Dashboard Visualisasi Kuesioner</p>', unsafe_allow_html=True)
 
-# === 5. Bar Chart: Distribusi Kategori (Positif, Netral, Negatif) ===
-st.subheader("5. Distribusi Kategori Jawaban")
-category_counts = all_categories.value_counts().reindex(["Positif", "Netral", "Negatif"], fill_value=0)
-fig5 = px.bar(
-    x=category_counts.index,
-    y=category_counts.values,
-    labels={"x": "Kategori", "y": "Jumlah"},
-    color=category_counts.index,
-    color_discrete_map={"Positif": "#2ca02c", "Netral": "#d9d9d9", "Negatif": "#d62728"}
-)
-st.plotly_chart(fig5, use_container_width=True)
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ Pengaturan")
+    
+    # File uploader
+    uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx', 'xls'])
+    
+    if uploaded_file is not None:
+        file_path = uploaded_file
+    else:
+        file_path = "data_kuesioner.xlsx"
+        st.info("Menggunakan file default: data_kuesioner.xlsx")
+    
+    # Create analyzer and visualizer
+    try:
+        analyzer, visualizer = create_analyzer(file_path)
+        st.success("✓ Data berhasil dimuat!")
+    except Exception as e:
+        st.error(f"Error: {e}")
+        st.stop()
+    
+    # Display basic info
+    st.header("📋 Informasi Data")
+    stats = analyzer.get_descriptive_statistics()
+    
+    st.metric("Total Responden", stats['total_respondents'])
+    st.metric("Total Pertanyaan", stats['total_questions'])
+    st.metric("Rata-rata Keseluruhan", f"{stats['overall_average']:.2f}")
+    
+    # Reliability analysis
+    st.header("🔍 Analisis Keandalan")
+    reliability = analyzer.get_reliability_analysis()
+    st.metric("Cronbach's Alpha", reliability['cronbach_alpha'])
+    st.caption(reliability['interpretation'])
 
-# === BONUS: Heatmap Korelasi Skor Antar Pertanyaan ===
-st.subheader("🎯 Bonus: Heatmap Korelasi Skor Antar Pertanyaan")
-corr_matrix = df_score.corr()
-fig_bonus = px.imshow(
-    corr_matrix,
-    text_auto=True,
-    aspect="auto",
-    color_continuous_scale="RdBu_r",
-    labels=dict(color="Korelasi")
-)
-st.plotly_chart(fig_bonus, use_container_width=True)
+# Main content
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "📈 Distribusi Keseluruhan", 
+    "📊 Per Pertanyaan", 
+    "⭐ Rata-rata Skor", 
+    "🏷️ Kategori Jawaban", 
+    "🎯 Analisis Lanjutan", 
+    "🧮 Statistik Deskriptif", 
+    "ℹ️ Informasi"
+])
 
-# === Info Tambahan ===
-st.sidebar.header("ℹ️ Informasi")
-st.sidebar.write("""
-- **SS**: Sangat Setuju (6)  
-- **S**: Setuju (5)  
-- **CS**: Cukup Setuju (4)  
-- **CTS**: Cenderung Tidak Setuju (3)  
-- **TS**: Tidak Setuju (2)  
-- **STS**: Sangat Tidak Setuju (1)  
+with tab1:
+    st.header("Distribusi Jawaban Keseluruhan")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.plotly_chart(visualizer.create_overall_bar_chart(), use_container_width=True)
+    
+    with col2:
+        st.plotly_chart(visualizer.create_overall_pie_chart(), use_container_width=True)
+    
+    # Display raw data
+    with st.expander("Lihat Data Mentah"):
+        st.write("Distribusi Jawaban:")
+        st.dataframe(analyzer.get_overall_distribution().to_frame().rename(columns={0: 'Jumlah'}))
 
-Kategori:
-- **Positif**: SS, S  
-- **Netral**: CS  
-- **Negatif**: CTS, TS, STS
-""")
+with tab2:
+    st.header("Distribusi Jawaban per Pertanyaan")
+    
+    st.plotly_chart(visualizer.create_stacked_bar_chart(), use_container_width=True)
+    
+    # Display distribution table
+    with st.expander("Lihat Tabel Distribusi"):
+        distribution_df = analyzer.get_distribution_per_question()
+        st.dataframe(distribution_df.style.background_gradient(cmap='Blues'))
+
+with tab3:
+    st.header("Analisis Rata-rata Skor")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.plotly_chart(visualizer.create_average_scores_chart(), use_container_width=True)
+    
+    with col2:
+        st.plotly_chart(visualizer.create_trend_line(), use_container_width=True)
+    
+    # Display statistics
+    avg_scores = analyzer.get_average_scores_per_question()
+    st.subheader("Statistik Rata-rata Skor")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Rata-rata Tertinggi", f"{avg_scores.max():.2f}", 
+                f"Pertanyaan: {avg_scores.idxmax()}")
+    col2.metric("Rata-rata Terendah", f"{avg_scores.min():.2f}", 
+                f"Pertanyaan: {avg_scores.idxmin()}")
+    col3.metric("Rata-rata Keseluruhan", f"{avg_scores.mean():.2f}")
+    col4.metric("Standar Deviasi", f"{avg_scores.std():.2f}")
+
+with tab4:
+    st.header("Distribusi Kategori Jawaban")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.plotly_chart(visualizer.create_category_distribution_chart(), use_container_width=True)
+    
+    with col2:
+        st.plotly_chart(visualizer.create_category_stacked_chart(), use_container_width=True)
+    
+    # Display category percentages
+    st.subheader("Persentase Kategori")
+    category_dist = analyzer.get_category_distribution()
+    total = category_dist.sum()
+    
+    col1, col2, col3 = st.columns(3)
+    col1.markdown(f'<div class="metric-card"><span class="positive">✅ Positif:</span><br>{category_dist["Positif"]} ({category_dist["Positif"]/total*100:.1f}%)</div>', unsafe_allow_html=True)
+    col2.markdown(f'<div class="metric-card"><span class="neutral">⚠️ Netral:</span><br>{category_dist["Netral"]} ({category_dist["Netral"]/total*100:.1f}%)</div>', unsafe_allow_html=True)
+    col3.markdown(f'<div class="metric-card"><span class="negative">❌ Negatif:</span><br>{category_dist["Negatif"]} ({category_dist["Negatif"]/total*100:.1f}%)</div>', unsafe_allow_html=True)
+
+with tab5:
+    st.header("Analisis Lanjutan (Bonus)")
+    
+    st.subheader("Radar Chart - Performa Pertanyaan")
+    st.plotly_chart(visualizer.create_radar_chart(), use_container_width=True)
+    
+    st.subheader("Box Plot - Distribusi Skor")
+    st.plotly_chart(visualizer.create_box_plot(), use_container_width=True)
+    
+    st.subheader("Heatmap - Pola Jawaban")
+    st.plotly_chart(visualizer.create_heatmap(), use_container_width=True)
+
+with tab6:
+    st.header("Statistik Deskriptif Lengkap")
+    
+    stats = analyzer.get_descriptive_statistics()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.subheader("📊 Ringkasan Data")
+        st.metric("Total Responden", stats['total_respondents'])
+        st.metric("Total Pertanyaan", stats['total_questions'])
+        st.metric("Total Jawaban", len(analyzer.df) * len(analyzer.df.columns))
+    
+    with col2:
+        st.subheader("📈 Statistik Skor")
+        st.metric("Rata-rata Keseluruhan", f"{stats['overall_average']:.2f}")
+        st.metric("Standar Deviasi", f"{stats['overall_std']:.2f}")
+        st.metric("Skor Minimum", stats['min_score'])
+        st.metric("Skor Maksimum", stats['max_score'])
+    
+    with col3:
+        st.subheader("🔍 Keandalan")
+        reliability = analyzer.get_reliability_analysis()
+        st.metric("Cronbach's Alpha", reliability['cronbach_alpha'])
+        st.caption(reliability['interpretation'])
+        st.metric("Jumlah Item", reliability['item_count'])
+    
+    st.markdown("---")
+    
+    st.subheader("📋 Rata-rata Skor per Pertanyaan")
+    avg_scores_df = analyzer.get_average_scores_per_question().to_frame().rename(columns={0: 'Rata-rata Skor'})
+    avg_scores_df['Kategori'] = avg_scores_df['Rata-rata Skor'].apply(
+        lambda x: 'Sangat Baik' if x >= 5 else ('Baik' if x >= 4 else 'Perlu Perbaikan')
+    )
+    st.dataframe(avg_scores_df.style.format({'Rata-rata Skor': '{:.2f}'}).background_gradient(cmap='RdYlGn', subset=['Rata-rata Skor']))
+    
+    st.subheader("📊 Distribusi Kategori")
+    category_df = analyzer.get_category_distribution().to_frame().rename(columns={0: 'Jumlah'})
+    category_df['Persentase'] = (category_df['Jumlah'] / category_df['Jumlah'].sum() * 100).round(2)
+    st.dataframe(category_df.style.format({'Persentase': '{:.2f}%'}))
+
+with tab7:
+    st.header("Informasi Dashboard")
+    
+    st.markdown("""
+    ### 📖 Tentang Dashboard
+    
+    Dashboard ini menyediakan visualisasi komprehensif untuk data kuesioner dengan berbagai jenis grafik dan analisis statistik.
+    
+    ### 🎯 Fitur Utama
+    
+    1. **Distribusi Keseluruhan**
+       - Bar Chart: Menampilkan distribusi frekuensi semua jawaban
+       - Pie Chart: Menampilkan proporsi persentase jawaban
+    
+    2. **Analisis per Pertanyaan**
+       - Stacked Bar Chart: Distribusi jawaban untuk setiap pertanyaan
+       - Tabel distribusi lengkap
+    
+    3. **Rata-rata Skor**
+       - Bar Chart: Rata-rata skor per pertanyaan dengan threshold
+       - Trend Line: Pola tren skor dengan moving average
+    
+    4. **Kategori Jawaban**
+       - Bar Chart: Distribusi kategori (Positif, Netral, Negatif)
+       - Stacked Bar: Distribusi kategori per pertanyaan
+    
+    5. **Analisis Lanjutan (Bonus)**
+       - Radar Chart: Visualisasi performa multi-dimensi
+       - Box Plot: Distribusi dan outlier skor
+       - Heatmap: Pola jawaban secara visual
+    
+    ### 📊 Skala Penilaian
+    
+    | Skala | Nilai | Kategori |
+    |-------|-------|----------|
+    | SS (Sangat Setuju) | 6 | Positif |
+    | S (Setuju) | 5 | Positif |
+    | CS (Cukup Setuju) | 4 | Netral |
+    | CTS (Cukup Tidak Setuju) | 3 | Negatif |
+    | TS (Tidak Setuju) | 2 | Negatif |
+    | STS (Sangat Tidak Setuju) | 1 | Negatif |
+    
+    ### 🔍 Interpretasi Kategori
+    
+    - **Positif (Skor 5-6)**: Respon yang mendukung/menguntungkan
+    - **Netral (Skor 4)**: Respon yang cenderung netral
+    - **Negatif (Skor 1-3)**: Respon yang tidak mendukung/kurang menguntungkan
+    
+    ### 📈 Analisis Keandalan
+    
+    Cronbach's Alpha digunakan untuk mengukur reliabilitas/keandalan instrumen:
+    - ≥ 0.9: Excellent
+    - ≥ 0.8: Good
+    - ≥ 0.7: Acceptable
+    - ≥ 0.6: Questionable
+    - ≥ 0.5: Poor
+    - < 0.5: Unacceptable
+    
+    ### 🛠️ Teknologi yang Digunakan
+    
+    - **Streamlit**: Framework untuk aplikasi web
+    - **Plotly**: Library visualisasi interaktif
+    - **Pandas**: Manipulasi dan analisis data
+    - **NumPy**: Komputasi numerik
+    
+    ### 👨‍💻 Pengembang
+    
+    Dashboard ini dikembangkan untuk analisis kuesioner yang komprehensif dan interaktif.
+    """)
+    
+    # Display data sample
+    st.markdown("---")
+    st.subheader("📋 Contoh Data")
+    st.write("5 baris pertama dari dataset:")
+    st.dataframe(analyzer.df.head())
+
+# Footer
+st.markdown("---")
+st.markdown("""
+    <div style='text-align: center; color: #666;'>
+        <p>Dashboard Kuesioner Analytics &copy; 2026 | Powered by Streamlit & Plotly</p>
+    </div>
+""", unsafe_allow_html=True)
