@@ -95,12 +95,12 @@ def main():
         print(f"{q}|{count}|{persen:.1f}")
     
     elif target_question == "q7":
-        q, count, persen = get_max_question_for_scale('TS')
-        print(f"{q}|{count}|{persen:.1f}")
+    q, count, persen = get_max_question_for_scale('TS')
+    print(f"{q}|{count}|{persen:.1f}")
     
     elif target_question == "q8":
-        q, count, persen = get_max_question_for_scale('TS')
-        print(f"{q}|{count}|{persen:.1f}")
+    q, count, persen = get_max_question_for_scale('STS')
+    print(f"{q}|{count}|{persen:.1f}")
     
     elif target_question == "q9":
         if sts_questions:
